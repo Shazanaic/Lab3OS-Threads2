@@ -25,7 +25,7 @@ DWORD WINAPI marker(LPVOID number) {
 		else {
 			std::cout << "Number of thread: " << n << "\n";
 			std::cout << "Number of marked elem-s: " << mark << "\n";
-			std::cout << "Index of unmarkable element" << idx << "\n\n";
+			std::cout << "Index of unmarkable element: " << idx << "\n\n";
 			LeaveCriticalSection(&cs);
 
 			SetEvent(hFinishEvents[n - 1]);
