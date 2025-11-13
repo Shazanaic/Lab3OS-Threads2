@@ -74,6 +74,6 @@ private:
 
 DWORD WINAPI marker(LPVOID number) {
     int n = reinterpret_cast<int>(number);
-    Marker worker(n);
-    return worker.run();
+    Marker marker(n);
+    return marker.run();
 }
