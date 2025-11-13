@@ -39,6 +39,7 @@ public:
                 WaitForSingleObject(hRemoveEvent, INFINITE);
 
                 if (rem == n) {
+                    std::cout << "Thread " << n << " finishing.\n";
                     cleanup();
                     SetEvent(hFinishEvents[n - 1]);
                     return 0;
