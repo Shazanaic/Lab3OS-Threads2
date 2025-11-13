@@ -3,100 +3,119 @@
 #include "marker.h"
 
 CRITICAL_SECTION cs;
-HANDLE hStartSignal, hContinueSignal, hRemoveEvent;
-HANDLE* hFinishEvents, *hTerminateSignals;
-int* arr;
-volatile int dim;
-volatile int rem;
+HANDLE hStartSignal = nullptr, hContinueSignal = nullptr, hRemoveEvent = nullptr;
+HANDLE* hFinishEvents = nullptr;
+HANDLE* hTerminateSignals = nullptr;
+HANDLE* hMarkrs = nullptr;
+int* arr = nullptr;
+volatile int dim = 0;
+volatile int rem = 0;
 
 int main() {
-	int dimTmp;
-	std::cout << "Enter the dimension of array: "; std::cin >> dimTmp;
-	dim = dimTmp;
+    int dimTmp;
+    std::cout << "Enter the dimension of array: ";
+    std::cin >> dimTmp;
+    dim = dimTmp;
 
-	arr = new int[dim] {};
+    arr = new int[dim] {};
 
-	int n;
-	std::cout << "Enter the number of marker threads: "; std::cin >> n;
+    int n;
+    std::cout << "Enter the number of marker threads: ";
+    std::cin >> n;
 
-	InitializeCriticalSection(&cs);
+    InitializeCriticalSection(&cs);
 
-	DWORD* IDMarkrs = new DWORD[n];
-	HANDLE* hMarkrs = new HANDLE[n];
-	hTerminateSignals = new HANDLE[n];
-	hFinishEvents = new HANDLE[n];
+    DWORD* IDMarkrs = new DWORD[n];
+    hMarkrs = new HANDLE[n]{};
+    hTerminateSignals = new HANDLE[n]{};
+    hFinishEvents = new HANDLE[n]{};
 
-	hStartSignal = CreateEventA(NULL, TRUE, FALSE, NULL);
-	hContinueSignal = CreateEventA(NULL, TRUE, FALSE, NULL);
-	hRemoveEvent = CreateEventA(NULL, TRUE, FALSE, NULL);
+    if (!(hStartSignal = CreateEventA(NULL, TRUE, FALSE, NULL)) ||
+        !(hContinueSignal = CreateEventA(NULL, TRUE, FALSE, NULL)) ||
+        !(hRemoveEvent = CreateEventA(NULL, TRUE, FALSE, NULL))) {
+        std::cerr << "Failed to create control events.\n";
+        return 1;
+    }
 
-	for (int i = 0; i < n; i++) {
-		hMarkrs[i] = CreateThread(NULL, 0, marker, reinterpret_cast<LPVOID>(i + 1), 0, &IDMarkrs[i]);
-		if (hMarkrs[i] == NULL) {
-			std::cerr << "Failed to create marker(" << (i + 1) << ").\n";
-			return 1;
-		}
-		
-		hTerminateSignals[i] = CreateEventA(NULL, TRUE, FALSE, NULL);
-		hFinishEvents[i] = CreateEventA(NULL, TRUE, FALSE, NULL);
-	}
+    for (int i = 0; i < n; i++) {
+        hMarkrs[i] = CreateThread(NULL, 0, marker, reinterpret_cast<LPVOID>(i + 1), 0, &IDMarkrs[i]);
+        if (hMarkrs[i] == NULL) {
+            std::cerr << "Failed to create marker(" << (i + 1) << ").\n";
+            return 1;
+        }
 
-	SetEvent(hStartSignal);
+        hTerminateSignals[i] = CreateEventA(NULL, TRUE, FALSE, NULL);
+        hFinishEvents[i] = CreateEventA(NULL, TRUE, FALSE, NULL);
 
-	int iter = n;
-	while (iter > 0) {
-		WaitForMultipleObjects(n, hFinishEvents, true, INFINITE);
-		EnterCriticalSection(&cs);
+        if (!hTerminateSignals[i] || !hFinishEvents[i]) {
+            std::cerr << "Failed to create event for marker(" << (i + 1) << ").\n";
+            return 1;
+        }
+    }
 
-		std::cout << "Current array: \n";
-		for (int i = 0; i < dim; i++) {
-			std::cout << arr[i] << " ";
-		}
-		std::cout << "\n";
-		LeaveCriticalSection(&cs);
+    SetEvent(hStartSignal);
 
-		int forDelete;
-		std::cout << "\nEnter the number of marker thread to delete: "; std::cin >> forDelete;
-		if (forDelete < 1 || forDelete > n || hMarkrs[forDelete - 1] == NULL) {
-			std::cout << "\nInvalid number. Try again\n";
-			SetEvent(hContinueSignal);
-			continue;
-		}
+    int iter = n;
+    while (iter > 0) {
+        WaitForMultipleObjects(n, hFinishEvents, TRUE, INFINITE);
+        EnterCriticalSection(&cs);
 
-		rem = forDelete;
-		PulseEvent(hRemoveEvent);
-		WaitForSingleObject(hMarkrs[forDelete - 1], INFINITE);
-		CloseHandle(hMarkrs[forDelete - 1]);
-		hMarkrs[forDelete - 1] = NULL;
+        std::cout << "Current array:\n";
+        for (int i = 0; i < dim; i++)
+            std::cout << arr[i] << " ";
+        std::cout << "\n";
+        LeaveCriticalSection(&cs);
 
-		iter--;
+        int forDelete;
+        std::cout << "\nEnter the number of marker thread to delete: ";
+        std::cin >> forDelete;
 
-		EnterCriticalSection(&cs);
-		std::cout << "Marker(" << forDelete << ") stopped successfully. Current Array: \n";
-		for (int i = 0; i < dim; i++)
-			std::cout << arr[i] << " ";
-		std::cout << "\n";
-		
-		LeaveCriticalSection(&cs);
-		ResetEvent(hRemoveEvent);
-		PulseEvent(hContinueSignal);
-	}
+        if (forDelete < 1 || forDelete > n || !hMarkrs[forDelete - 1]) {
+            std::cout << "\nInvalid number. Try again\n";
+            SetEvent(hContinueSignal);
+            continue;
+        }
 
-	std::cout << "All threads are finished.\nCurrent array: \n";
-	for (int i = 0; i < dim; i++)
-		std::cout << arr[i] << " ";
-	std::cout << "\n";
+        rem = forDelete;
+        PulseEvent(hRemoveEvent);
+        WaitForSingleObject(hMarkrs[forDelete - 1], INFINITE);
+        CloseHandle(hMarkrs[forDelete - 1]);
+        hMarkrs[forDelete - 1] = NULL;
 
-	for (int i = 0; i < n; i++) {
-		if (hMarkrs[i]) CloseHandle(hMarkrs[i]);
-		CloseHandle(hTerminateSignals[i]);
-		CloseHandle(hFinishEvents[i]);
-	}
+        iter--;
 
-	CloseHandle(hStartSignal);
-	CloseHandle(hContinueSignal);
-	CloseHandle(hRemoveEvent);
-	DeleteCriticalSection(&cs);
+        EnterCriticalSection(&cs);
+        std::cout << "Marker(" << forDelete << ") stopped successfully. Current Array:\n";
+        for (int i = 0; i < dim; i++)
+            std::cout << arr[i] << " ";
+        std::cout << "\n";
+        LeaveCriticalSection(&cs);
 
-	return 0;
+        ResetEvent(hRemoveEvent);
+        PulseEvent(hContinueSignal);
+    }
+
+    std::cout << "All threads are finished.\nCurrent array:\n";
+    for (int i = 0; i < dim; i++)
+        std::cout << arr[i] << " ";
+    std::cout << "\n";
+
+    for (int i = 0; i < n; i++) {
+        if (hMarkrs[i]) CloseHandle(hMarkrs[i]);
+        if (hTerminateSignals[i]) CloseHandle(hTerminateSignals[i]);
+        if (hFinishEvents[i]) CloseHandle(hFinishEvents[i]);
+    }
+
+    if (hStartSignal) CloseHandle(hStartSignal);
+    if (hContinueSignal) CloseHandle(hContinueSignal);
+    if (hRemoveEvent) CloseHandle(hRemoveEvent);
+
+    DeleteCriticalSection(&cs);
+    delete[] arr;
+    delete[] IDMarkrs;
+    delete[] hMarkrs;
+    delete[] hTerminateSignals;
+    delete[] hFinishEvents;
+
+    return 0;
 }
